@@ -1,4 +1,4 @@
-package gin_session
+package my_session
 
 import (
 	"context"
@@ -15,9 +15,10 @@ import (
 //NewRedisSessionData  的构造函数,用于构造sessiondata小仓库，小红块
 func NewRedisSessionData(id string, client *redis.Client) SessionData {
 	return &RedisSD{
-		ID:     id,
-		Data:   make(map[string]interface{}, 8),
-		client: client,
+		ID:      id,
+		Data:    make(map[string]interface{}, 8),
+		expired: 3600, //设置过期时间1h
+		client:  client,
 	}
 }
 
@@ -55,9 +56,15 @@ func (r *RedisSD) Del(key string) {
 	r.rwLock.Lock()
 	defer r.rwLock.Unlock()
 	delete(r.Data, key)
-
 }
-
+func (r *RedisSD) Clear() {
+	// 删除所有键值对
+	r.rwLock.Lock()
+	defer r.rwLock.Unlock()
+	for k := range r.Data {
+		delete(r.Data, k)
+	}
+}
 func (r *RedisSD) Save() {
 	//将最新的sessiondata保存到redis中
 	value, err := json.Marshal(r.Data)
@@ -125,7 +132,7 @@ func (r *RedisMgr) LoadFromRedis(sessionID string) (err error) {
 	value, err := r.client.Get(context.Background(), sessionID).Result()
 	if err != nil {
 		//redis中wusessioinid对应的sessiondata
-		fmt.Errorf("连接数据库失败")
+		fmt.Println("连接数据库失败")
 		return
 	}
 	//3.反序列化成 r.session

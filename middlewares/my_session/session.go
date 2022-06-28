@@ -1,6 +1,9 @@
-package gin_session
+package my_session
 
 import (
+	"bkd/model"
+	"fmt"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -33,6 +36,7 @@ type SessionData interface {
 	Get(key string) (value interface{}, err error)
 	Set(key string, value interface{})
 	Del(key string)
+	Clear()
 	Save() // 保存
 }
 
@@ -43,7 +47,8 @@ type Mgr interface {
 	CreatSession() (sd SessionData)
 }
 
-//gin框架中间件
+//全局中间件
+// 每次请求都会获取cookie中的session id 字段并取出session data，若出错则创建新的session,最后设置上下文的session字段值并写回session id字段值到cookie中
 func SessionMiddleware(mgrObj Mgr) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		//1.请求刚过来，从请求的cookie中获取SessionId
@@ -63,11 +68,58 @@ func SessionMiddleware(mgrObj Mgr) gin.HandlerFunc {
 				SessionID = sd.GetID() //这个sessionid用于回写coookie
 			}
 		}
-		//3. 如何实现让后续所有请求的方法都拿到sessiondata？ 让每个用户的ssiondata都不同
-		//3.利用gin框架的c.Set("session",sessiondata)
+		//3.利用gin框架的c.Set("session",sessiondata)在ctx中设置session字段为sessionData
 		c.Set(SessionContextName, sd)
-		//回写cookie
+		//回写cookie,设置session id字段为sessionData的id
 		c.SetCookie(SessionCookieName, SessionID, 3600, "/", "localhost", false, false)
 		c.Next()
 	}
+}
+
+//全局中间件
+// 获取登录用户并设置在ctx中，每次请求都会从session中取出uid验证登录状态
+func AuthCurrentUser() gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		// 1. 从上下文中取到session data
+		tmpSD, _ := ctx.Get(SessionContextName)
+		sd := tmpSD.(SessionData)
+		// 2. 从session data取到user_id
+		value, _ := sd.Get("uid")
+		if value != nil {
+			user, err := model.GetUser("uid")
+			if err == nil {
+				ctx.Set("user", &user)
+				fmt.Print("user set!!\n")
+			}
+		}
+		ctx.Next()
+	}
+}
+
+//局部中间件
+// 要求登录的中间件,需要从ctx中获取user数据才算登录
+func AuthMiddleware() gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		if user, _ := ctx.Get("user"); user != nil {
+			if _, ok := user.(*model.User); ok {
+				ctx.Next()
+				return
+			}
+		}
+		ctx.JSON(200, gin.H{
+			"code": -1,
+			"msg":  "局部中间件提示：需要登录",
+		})
+		ctx.Abort()
+	}
+}
+
+// CurrentUser 获取当前用户  基于上述在ctx中设置user的方法
+func CurrentUser(c *gin.Context) *model.User {
+	if user, _ := c.Get("user"); user != nil {
+		if u, ok := user.(*model.User); ok {
+			return u
+		}
+	}
+	return nil
 }

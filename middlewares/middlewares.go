@@ -5,12 +5,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"bkd/middlewares/gin_session"
+	"bkd/middlewares/my_session"
 )
 
-//注册session为全局的中间件
-func InitMiddlewares(router *gin.Engine) {
-	gin_session.InitMgr("redis", os.Getenv("REDIS_ADDR"))
-	// gin_session.InitMgr("memory", "")  //内存版session，后面的地址参数无用处
-	router.Use(gin_session.SessionMiddleware(gin_session.MgrObj))
+//注册my_session为全局的中间件
+func Activate_My_Session(router *gin.Engine) {
+	my_session.InitMgr("redis", os.Getenv("REDIS_ADDR"))
+	router.Use(my_session.SessionMiddleware(my_session.MgrObj))
+	router.Use(my_session.AuthCurrentUser())
+	//my_session.AuthMiddleware()局部中间件，在route中设置
 }
+
